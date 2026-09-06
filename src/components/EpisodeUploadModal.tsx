@@ -182,16 +182,27 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
 
       // If user selected a local file, upload it to the server so ALL devices (phones, tablets, PCs) can watch it!
       if (uploadMode === 'file' && selectedFile) {
+        setUploadProgress(1);
         try {
           const uploadRes = await uploadMediaFile(selectedFile, (percent) => {
             setUploadProgress(percent);
           });
-          finalVideoUrl = uploadRes.url;
-        } catch (uploadErr) {
-          console.warn('Upload para o servidor falhou, fallback para blob local:', uploadErr);
+          if (uploadRes?.url) {
+            finalVideoUrl = uploadRes.url;
+          }
+        } catch (uploadErr: any) {
+          console.warn('Upload para o servidor encontrou problema, ativando fallback local:', uploadErr);
+          // If we have no video file or URL at all, fail loudly
+          if (!selectedFile && !episodeToEdit?.videoBlob && !finalVideoUrl) {
+            throw new Error(`Falha no upload do vídeo: ${uploadErr?.message || 'Erro de rede'}`);
+          }
         }
       } else if (uploadMode === 'url') {
         finalVideoUrl = videoUrlInput.trim();
+      }
+
+      if (!finalVideoUrl && !selectedFile && !episodeToEdit?.videoBlob) {
+        throw new Error('Nenhum vídeo válido fornecido. Selecione um arquivo ou URL de vídeo.');
       }
 
       const epId = episodeToEdit?.id || `ep-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -218,7 +229,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Falha ao salvar episódio:', err);
-      setErrorMsg('Erro ao salvar episódio. Verifique se o servidor está ativo.');
+      setErrorMsg(err?.message || 'Erro ao salvar episódio. Verifique se o servidor está ativo.');
     } finally {
       setIsSaving(false);
       setUploadProgress(null);

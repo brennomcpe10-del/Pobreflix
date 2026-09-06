@@ -29,6 +29,7 @@ import {
   clearAllEpisodes,
   DEFAULT_SERIES_INFO,
 } from './utils/db';
+import { saveVideoBlob, getVideoBlob, deleteVideoBlob } from './utils/idb';
 import { Header } from './components/Header';
 import { EpisodeCard } from './components/EpisodeCard';
 import { EpisodeUploadModal } from './components/EpisodeUploadModal';
@@ -53,7 +54,7 @@ export default function App() {
   // Active view tab: 'home' (Início) or 'episodes' (Catálogo de episódios) or 'new-series' (Layout de nova série)
   const [currentTab, setCurrentTab] = useState<'home' | 'episodes' | 'new-series'>('home');
 
-  // Role: Viewer by default, unlocked with password 0409
+  // Role: Viewer by default, unlocked with admin password
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState<boolean>(false);
 
@@ -98,7 +99,20 @@ export default function App() {
         });
       }
 
-      setAllEpisodes(loadedEpisodes);
+      // Enrich episodes with local IndexedDB video blobs if available
+      const enrichedEpisodes = await Promise.all(
+        loadedEpisodes.map(async (ep) => {
+          if (!ep.videoBlob) {
+            const localBlob = await getVideoBlob(ep.id);
+            if (localBlob) {
+              return { ...ep, videoBlob: localBlob };
+            }
+          }
+          return ep;
+        })
+      );
+
+      setAllEpisodes(enrichedEpisodes);
     } catch (err) {
       console.warn('Erro ao sincronizar dados com o servidor:', err);
     } finally {
@@ -213,13 +227,35 @@ export default function App() {
 
   // Episode actions
   const handleSaveEpisode = async (episode: Episode) => {
+    // 1. If there's a local videoBlob, save in IndexedDB for immediate & persistent local playback
+    if (episode.videoBlob) {
+      await saveVideoBlob(episode.id, episode.videoBlob);
+    }
+
+    // 2. Save episode metadata to server
     await saveEpisode(episode);
+
+    // 3. Ensure season filter shows the new episode
+    setSelectedSeason('all');
+
+    // 4. If episode belongs to a different series, activate that series so it is immediately visible
+    if (episode.seriesId && episode.seriesId !== activeSeries.id) {
+      const match = seriesList.find((s) => s.id === episode.seriesId);
+      if (match) {
+        setActiveSeries(match);
+      }
+    }
+
+    // 5. Navigate to episodes tab to display the newly published episode
+    setCurrentTab('episodes');
+
     await refreshData(true);
     showToast(`Episódio "${episode.title}" salvo e compartilhado com todos os aparelhos!`, 'success');
   };
 
   const handleDeleteEpisode = async (id: string) => {
     await deleteEpisode(id);
+    await deleteVideoBlob(id);
     setAllEpisodes((prev) => prev.filter((e) => e.id !== id));
     if (activePlayEpisode?.id === id) {
       setActivePlayEpisode(null);
@@ -703,7 +739,7 @@ export default function App() {
         onSaveSeries={handleSaveSeries}
       />
 
-      {/* Admin Password Authentication Modal (PIN: 0409) */}
+      {/* Admin Password Authentication Modal */}
       <AdminAuthModal
         isOpen={isAdminAuthOpen}
         onClose={() => setIsAdminAuthOpen(false)}

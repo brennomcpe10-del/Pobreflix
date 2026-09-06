@@ -39,6 +39,7 @@ interface DatabaseSchema {
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+const CHUNKS_DIR = path.join(DATA_DIR, 'chunks');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // Ensure directories exist
@@ -47,6 +48,9 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+if (!fs.existsSync(CHUNKS_DIR)) {
+  fs.mkdirSync(CHUNKS_DIR, { recursive: true });
 }
 
 // Default initial data with multiple series and episodes
@@ -232,6 +236,14 @@ const upload = multer({
   },
 });
 
+// Multer memory storage for 3-5MB chunk uploads to support files of any size without proxy size limits
+const chunkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 30 * 1024 * 1024, // 30MB per chunk limit (well within Cloud Run 32MB)
+  },
+});
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -357,7 +369,7 @@ async function startServer() {
     res.json({ success: true, deletedId: id });
   });
 
-  // API: Upload video or image file to server storage
+  // API: Upload video or image file to server storage (direct small file)
   app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: 'Nenhum arquivo enviado' });
@@ -371,6 +383,58 @@ async function startServer() {
       fileSize: req.file.size,
       fileType: req.file.mimetype,
     });
+  });
+
+  // API: Chunked upload supporting files of any size (up to 4GB+) without hitting reverse proxy limits
+  app.post('/api/upload-chunk', chunkUpload.single('chunk'), (req, res) => {
+    try {
+      const { uploadId, chunkIndex, totalChunks, fileName, fileSize, fileType } = req.body;
+      if (!req.file || !uploadId || chunkIndex === undefined || !totalChunks) {
+        res.status(400).json({ error: 'Parâmetros de upload fragmentado inválidos' });
+        return;
+      }
+
+      const idx = parseInt(chunkIndex, 10);
+      const total = parseInt(totalChunks, 10);
+      const cleanUploadId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+      const partFile = path.join(CHUNKS_DIR, `part_${cleanUploadId}`);
+
+      if (idx === 0 && fs.existsSync(partFile)) {
+        try { fs.unlinkSync(partFile); } catch {}
+      }
+
+      fs.appendFileSync(partFile, req.file.buffer);
+
+      if (idx === total - 1) {
+        // All chunks received, assemble to final uploads directory
+        const originalName = fileName || 'video.mp4';
+        const ext = path.extname(originalName) || '.mp4';
+        const base = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const unique = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const finalFileName = `${base}_${unique}${ext}`;
+        const finalPath = path.join(UPLOADS_DIR, finalFileName);
+
+        fs.renameSync(partFile, finalPath);
+
+        const stats = fs.statSync(finalPath);
+        res.json({
+          url: `/uploads/${finalFileName}`,
+          fileName: originalName,
+          fileSize: stats.size,
+          fileType: fileType || 'video/mp4',
+          complete: true,
+        });
+      } else {
+        res.json({
+          receivedChunk: idx,
+          totalChunks: total,
+          complete: false,
+        });
+      }
+    } catch (err: any) {
+      console.error('Erro no upload fragmentado:', err);
+      res.status(500).json({ error: err.message || 'Erro no servidor ao processar pedaço de vídeo' });
+    }
   });
 
   // API: Reset to sample demo series and episodes

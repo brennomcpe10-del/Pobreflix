@@ -106,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-300 hover:text-white bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700/80 transition-all cursor-pointer"
           >
             <Lock className="w-3.5 h-3.5 text-blue-400" />
-            <span>Admin (Senha: 0409)</span>
+            <span>Admin</span>
           </button>
         )}
 
@@ -132,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({
             }
           }}
           className="flex items-center gap-1.5 px-3 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 rounded-xl text-xs font-semibold text-neutral-200 border border-neutral-700/70 transition-all cursor-pointer"
-          title={isAdmin ? 'Configurar série' : 'Requer senha de administrador (0409)'}
+          title={isAdmin ? 'Configurar série' : 'Requer acesso de administrador'}
         >
           <Edit3 className="w-3.5 h-3.5 text-neutral-400" />
           <span>Configurar Série</span>
@@ -148,7 +148,7 @@ export const Header: React.FC<HeaderProps> = ({
             }
           }}
           className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold text-white shadow-md shadow-blue-900/20 transition-all cursor-pointer hover:scale-102"
-          title={isAdmin ? 'Adicionar novo episódio' : 'Requer senha de administrador (0409)'}
+          title={isAdmin ? 'Adicionar novo episódio' : 'Requer acesso de administrador'}
         >
           <Plus className="w-4 h-4" />
           <span>Novo Episódio</span>

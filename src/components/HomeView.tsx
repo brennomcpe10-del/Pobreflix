@@ -270,7 +270,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <p className="text-xs text-neutral-400 mt-1 max-w-sm">
               {isAdmin
                 ? 'Você está no modo Administrador. Adicione seu primeiro episódio agora!'
-                : 'Entre no modo Administrador com a senha 0409 para publicar episódios.'}
+                : 'Entre no modo Administrador para publicar episódios.'}
             </p>
             {isAdmin ? (
               <button

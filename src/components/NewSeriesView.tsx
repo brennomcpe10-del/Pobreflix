@@ -157,7 +157,7 @@ export const NewSeriesView: React.FC<NewSeriesViewProps> = ({
       onAdminUnlock();
       setAdminPinError('');
     } else {
-      setAdminPinError('Senha incorreta. A senha de administrador é 0409.');
+      setAdminPinError('Senha incorreta. Tente novamente.');
     }
   };
 
@@ -179,7 +179,7 @@ export const NewSeriesView: React.FC<NewSeriesViewProps> = ({
       if (adminPin.trim() === '0409') {
         onAdminUnlock();
       } else {
-        setAdminPinError('Digite a senha de administrador (0409) para autorizar a publicação.');
+        setAdminPinError('Digite a senha de administrador para autorizar a publicação.');
         return;
       }
     }
@@ -246,7 +246,7 @@ export const NewSeriesView: React.FC<NewSeriesViewProps> = ({
           {isAdmin ? (
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-xs font-bold text-emerald-400 shadow-sm">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Admin Autorizado (0409)</span>
+              <span>Admin Autorizado</span>
             </div>
           ) : (
             <button
@@ -254,7 +254,7 @@ export const NewSeriesView: React.FC<NewSeriesViewProps> = ({
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-950/60 border border-amber-500/40 text-xs font-bold text-amber-300 hover:bg-amber-900/50 transition-colors cursor-pointer"
             >
               <Lock className="w-4 h-4 text-amber-400" />
-              <span>Requer Senha (0409)</span>
+              <span>Requer Senha Admin</span>
             </button>
           )}
         </div>
@@ -530,7 +530,7 @@ export const NewSeriesView: React.FC<NewSeriesViewProps> = ({
                 <h4 className="text-xs font-bold uppercase tracking-wider">Autorização de Administrador</h4>
               </div>
               <p className="text-xs text-neutral-400 leading-relaxed">
-                Para evitar modificações acidentais no catálogo compartilhado, digite a senha de administrador (PIN: <span className="text-white font-mono font-bold">0409</span>):
+                Para evitar modificações acidentais no catálogo compartilhado, digite a senha de administrador:
               </p>
 
               <form onSubmit={handleUnlockPin} className="flex items-center gap-2">
@@ -545,7 +545,7 @@ export const NewSeriesView: React.FC<NewSeriesViewProps> = ({
                       onAdminUnlock();
                     }
                   }}
-                  placeholder="Digite 0409"
+                  placeholder="Digite a senha"
                   className="px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-700 text-sm font-mono text-white placeholder-neutral-500 focus:border-amber-400 outline-none w-36"
                 />
                 <button

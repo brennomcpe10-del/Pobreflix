@@ -101,7 +101,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           <button
             onClick={onOpenAdminAuth}
             className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-neutral-400 hover:text-amber-400 font-medium transition-all cursor-pointer"
-            title="Entrar como Admin (0409)"
+            title="Entrar como Administrador"
           >
             <Lock className="w-5 h-5" />
             <span className="text-[10px] mt-0.5">Admin</span>
