@@ -227,18 +227,37 @@ export default function App() {
 
   // Episode actions
   const handleSaveEpisode = async (episode: Episode) => {
-    // 1. If there's a local videoBlob, save in IndexedDB for immediate & persistent local playback
+    // 1. Optimistically update local React state so UI updates instantly
+    setAllEpisodes((prev) => {
+      const index = prev.findIndex((e) => e.id === episode.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = episode;
+        return next;
+      }
+      return [...prev, episode];
+    });
+
+    // 2. If there's a local videoBlob, save in IndexedDB for immediate & persistent local playback
     if (episode.videoBlob) {
-      await saveVideoBlob(episode.id, episode.videoBlob);
+      try {
+        await saveVideoBlob(episode.id, episode.videoBlob);
+      } catch (e) {
+        console.warn('Falha ao salvar no IndexedDB:', e);
+      }
     }
 
-    // 2. Save episode metadata to server
-    await saveEpisode(episode);
+    // 3. Save episode metadata (localStorage + Server sync)
+    try {
+      await saveEpisode(episode);
+    } catch (e) {
+      console.warn('Erro ao sincronizar com servidor:', e);
+    }
 
-    // 3. Ensure season filter shows the new episode
+    // 4. Ensure season filter shows the new episode
     setSelectedSeason('all');
 
-    // 4. If episode belongs to a different series, activate that series so it is immediately visible
+    // 5. If episode belongs to a different series, activate that series so it is immediately visible
     if (episode.seriesId && episode.seriesId !== activeSeries.id) {
       const match = seriesList.find((s) => s.id === episode.seriesId);
       if (match) {
@@ -246,11 +265,12 @@ export default function App() {
       }
     }
 
-    // 5. Navigate to episodes tab to display the newly published episode
+    // 6. Navigate to episodes tab to display the newly published episode
     setCurrentTab('episodes');
 
+    // 7. Refresh background sync
     await refreshData(true);
-    showToast(`Episódio "${episode.title}" salvo e compartilhado com todos os aparelhos!`, 'success');
+    showToast(`Episódio "${episode.title}" salvo com sucesso!`, 'success');
   };
 
   const handleDeleteEpisode = async (id: string) => {

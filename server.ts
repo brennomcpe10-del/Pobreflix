@@ -248,8 +248,38 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Comprehensive CORS and Preflight handler for all routes and origins
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range');
+    res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+      return;
+    }
+    next();
+  });
+
+  // Request logging for monitoring API operations
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api')) {
+      console.log(`[API ${req.method}] ${req.originalUrl}`);
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  app.use(express.text({ type: ['text/*', 'application/json'], limit: '50mb' }));
+  app.use((req, res, next) => {
+    if (typeof req.body === 'string' && req.body.trim().startsWith('{')) {
+      try {
+        req.body = JSON.parse(req.body);
+      } catch {}
+    }
+    next();
+  });
 
   // Static uploads serving with Range header support for video streaming
   app.use('/uploads', express.static(UPLOADS_DIR, {
@@ -267,18 +297,18 @@ async function startServer() {
   }));
 
   // API: Health check
-  app.get('/api/health', (req, res) => {
+  app.get(['/api/health', '/api/health/'], (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
   });
 
   // API: Get all series
-  app.get('/api/series', (req, res) => {
+  app.get(['/api/series', '/api/series/'], (req, res) => {
     const db = readDatabase();
     res.json(db.series);
   });
 
   // API: Save or update series
-  app.post('/api/series', (req, res) => {
+  const handleSaveSeries = (req: express.Request, res: express.Response) => {
     const newSeries: Series = req.body;
     if (!newSeries || !newSeries.title) {
       res.status(400).json({ error: 'Título da série é obrigatório' });
@@ -302,10 +332,13 @@ async function startServer() {
 
     writeDatabase(db);
     res.json(newSeries);
-  });
+  };
+
+  app.post(['/api/series', '/api/series/'], handleSaveSeries);
+  app.put(['/api/series', '/api/series/', '/api/series/:id'], handleSaveSeries);
 
   // API: Delete series (and all its episodes)
-  app.delete('/api/series/:id', (req, res) => {
+  app.delete(['/api/series/:id', '/api/series/:id/'], (req, res) => {
     const { id } = req.params;
     const db = readDatabase();
     db.series = db.series.filter((s) => s.id !== id);
@@ -315,7 +348,7 @@ async function startServer() {
   });
 
   // API: Get all episodes (optional filter by ?seriesId=...)
-  app.get('/api/episodes', (req, res) => {
+  app.get(['/api/episodes', '/api/episodes/'], (req, res) => {
     const { seriesId } = req.query;
     const db = readDatabase();
     let episodes = db.episodes;
@@ -331,7 +364,7 @@ async function startServer() {
   });
 
   // API: Save or update episode
-  app.post('/api/episodes', (req, res) => {
+  const handleSaveEpisode = (req: express.Request, res: express.Response) => {
     const ep: Episode = req.body;
     if (!ep || !ep.title) {
       res.status(400).json({ error: 'Título do episódio é obrigatório' });
@@ -358,10 +391,13 @@ async function startServer() {
 
     writeDatabase(db);
     res.json(ep);
-  });
+  };
+
+  app.post(['/api/episodes', '/api/episodes/'], handleSaveEpisode);
+  app.put(['/api/episodes', '/api/episodes/', '/api/episodes/:id'], handleSaveEpisode);
 
   // API: Delete episode
-  app.delete('/api/episodes/:id', (req, res) => {
+  app.delete(['/api/episodes/:id', '/api/episodes/:id/'], (req, res) => {
     const { id } = req.params;
     const db = readDatabase();
     db.episodes = db.episodes.filter((e) => e.id !== id);
@@ -370,7 +406,7 @@ async function startServer() {
   });
 
   // API: Upload video or image file to server storage (direct small file)
-  app.post('/api/upload', upload.single('file'), (req, res) => {
+  app.post(['/api/upload', '/api/upload/'], upload.single('file'), (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: 'Nenhum arquivo enviado' });
       return;
@@ -386,7 +422,7 @@ async function startServer() {
   });
 
   // API: Chunked upload supporting files of any size (up to 4GB+) without hitting reverse proxy limits
-  app.post('/api/upload-chunk', chunkUpload.single('chunk'), (req, res) => {
+  app.post(['/api/upload-chunk', '/api/upload-chunk/'], chunkUpload.single('chunk'), (req, res) => {
     try {
       const { uploadId, chunkIndex, totalChunks, fileName, fileSize, fileType } = req.body;
       if (!req.file || !uploadId || chunkIndex === undefined || !totalChunks) {
@@ -414,7 +450,16 @@ async function startServer() {
         const finalFileName = `${base}_${unique}${ext}`;
         const finalPath = path.join(UPLOADS_DIR, finalFileName);
 
-        fs.renameSync(partFile, finalPath);
+        try {
+          fs.renameSync(partFile, finalPath);
+        } catch (renameErr: any) {
+          if (renameErr && renameErr.code === 'EXDEV') {
+            fs.copyFileSync(partFile, finalPath);
+            fs.unlinkSync(partFile);
+          } else {
+            throw renameErr;
+          }
+        }
 
         const stats = fs.statSync(finalPath);
         res.json({
@@ -438,10 +483,16 @@ async function startServer() {
   });
 
   // API: Reset to sample demo series and episodes
-  app.post('/api/reset', (req, res) => {
+  app.post(['/api/reset', '/api/reset/'], (req, res) => {
     const resetData = { series: DEFAULT_SERIES, episodes: DEFAULT_EPISODES };
     writeDatabase(resetData);
     res.json(resetData);
+  });
+
+  // Safe fallback for unhandled /api/* routes
+  app.all('/api/*', (req, res) => {
+    console.warn(`[API 404] Route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ error: `Rota da API não encontrada: ${req.method} ${req.originalUrl}` });
   });
 
   // Vite middleware for development vs static build in production

@@ -77,13 +77,21 @@ export async function fetchAllEpisodes(seriesId?: string): Promise<Episode[]> {
  * Salva um episódio no servidor.
  */
 export async function saveEpisodeToServer(episode: Episode): Promise<Episode> {
+  // Strip non-serializable or heavy binary fields before posting to server
+  const { videoBlob, ...cleanEpisode } = episode;
+
   const res = await fetch('/api/episodes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(episode),
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(cleanEpisode),
   });
+
   if (!res.ok) {
-    throw new Error(`Falha ao salvar episódio (HTTP ${res.status})`);
+    const errorText = await res.text().catch(() => '');
+    throw new Error(`Falha ao salvar episódio (HTTP ${res.status}${errorText ? ': ' + errorText : ''})`);
   }
   return await res.json();
 }
@@ -186,13 +194,15 @@ function uploadSingleChunk(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
-    formData.append('chunk', chunk);
+
+    // Append metadata fields first before the binary chunk
     formData.append('uploadId', uploadId);
     formData.append('chunkIndex', chunkIndex.toString());
     formData.append('totalChunks', totalChunks.toString());
     formData.append('fileName', fileName);
     formData.append('fileSize', fileSize.toString());
     formData.append('fileType', fileType);
+    formData.append('chunk', chunk, 'chunk.bin');
 
     if (onProgress && xhr.upload) {
       xhr.upload.addEventListener('progress', (e) => {
@@ -203,6 +213,7 @@ function uploadSingleChunk(
     }
 
     xhr.open('POST', '/api/upload-chunk');
+    xhr.setRequestHeader('Accept', 'application/json');
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -213,13 +224,24 @@ function uploadSingleChunk(
           reject(new Error('Resposta inválida do servidor de upload'));
         }
       } else {
-        reject(new Error(`Erro ao enviar pedaço do vídeo: HTTP ${xhr.status}`));
+        let msg = `Erro HTTP ${xhr.status}`;
+        try {
+          const errRes = JSON.parse(xhr.responseText);
+          if (errRes.error) msg = errRes.error;
+        } catch {}
+        reject(new Error(`Erro ao enviar pedaço do vídeo: ${msg}`));
       }
     };
 
     xhr.onerror = () => {
       reject(new Error('Falha de conexão com o servidor de upload'));
     };
+
+    xhr.ontimeout = () => {
+      reject(new Error('Tempo limite excedido ao enviar pedaço do vídeo'));
+    };
+
+    xhr.timeout = 60000; // 60s timeout
 
     xhr.send(formData);
   });
