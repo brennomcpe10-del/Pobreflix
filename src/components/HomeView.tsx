@@ -15,14 +15,17 @@ import {
   ArrowRight,
   Eye,
   Check,
+  Compass,
 } from 'lucide-react';
-import { Episode, SeriesInfo } from '../types';
+import { Episode, Series } from '../types';
 import { formatBytes, formatDuration, downloadEpisodeFile } from '../utils/helpers';
 import { EpisodeCard } from './EpisodeCard';
 
 interface HomeViewProps {
-  seriesInfo: SeriesInfo;
+  seriesInfo: Series;
+  allSeries: Series[];
   episodes: Episode[];
+  allEpisodes: Episode[];
   isAdmin: boolean;
   onPlayEpisode: (ep: Episode) => void;
   onGoToEpisodes: (season?: number | 'all') => void;
@@ -32,11 +35,15 @@ interface HomeViewProps {
   onEditEpisode: (ep: Episode) => void;
   onDeleteEpisode: (id: string) => void;
   onToggleWatched: (ep: Episode) => void;
+  onSelectSeries: (series: Series) => void;
+  onAddNewSeries: () => void;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
   seriesInfo,
+  allSeries,
   episodes,
+  allEpisodes,
   isAdmin,
   onPlayEpisode,
   onGoToEpisodes,
@@ -46,12 +53,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onEditEpisode,
   onDeleteEpisode,
   onToggleWatched,
+  onSelectSeries,
+  onAddNewSeries,
 }) => {
-  // Find next episode to watch: first unwatched episode, or first episode
+  // Next episode to watch: first unwatched episode, or first episode of the active series
   const nextEpisode =
     episodes.find((ep) => !ep.watched) || (episodes.length > 0 ? episodes[0] : null);
 
-  // Group episodes by season
+  // Group episodes of active series by season
   const seasonsMap = React.useMemo(() => {
     const map = new Map<number, Episode[]>();
     episodes.forEach((ep) => {
@@ -64,21 +73,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const seasonsList = Array.from(seasonsMap.keys()).sort((a: number, b: number) => a - b);
 
-  // Calculate total duration in minutes
-  const totalDurationSec = episodes.reduce((acc, ep) => acc + (ep.duration || 0), 0);
+  // Watched progress for active series
   const watchedCount = episodes.filter((ep) => ep.watched).length;
   const progressPercent =
     episodes.length > 0 ? Math.round((watchedCount / episodes.length) * 100) : 0;
 
-  // Recent 3 or 4 episodes for quick preview
+  // Recent 3 episodes for active series
   const recentEpisodes = [...episodes]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 3);
 
+  // Other series to explore
+  const otherSeries = allSeries.filter((s) => s.id !== seriesInfo.id);
+
   return (
-    <div className="space-y-10 pb-8">
+    <div className="space-y-6 sm:space-y-10 pb-6 sm:pb-8">
       {/* Hero Showcase Banner */}
-      <section className="relative rounded-3xl overflow-hidden border border-neutral-800 bg-neutral-900 shadow-2xl">
+      <section className="relative rounded-2xl sm:rounded-3xl overflow-hidden border border-neutral-800 bg-neutral-900 shadow-2xl">
         {/* Background Image / Banner */}
         <div className="absolute inset-0 z-0">
           {seriesInfo.bannerUrl ? (
@@ -91,60 +102,59 @@ export const HomeView: React.FC<HomeViewProps> = ({
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-neutral-900 to-neutral-950" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/70 to-neutral-950/20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/75 to-neutral-950/25" />
           <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/60 to-transparent" />
         </div>
 
-        {/* Hero Content */}
-        <div className="relative z-10 p-6 sm:p-10 lg:p-14 max-w-3xl space-y-6">
+        {/* Hero Content - Clean on Mobile and Spacious on Desktop */}
+        <div className="relative z-10 p-4 sm:p-8 lg:p-12 max-w-3xl space-y-4 sm:space-y-6">
           {/* Metadata Badges */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1 bg-blue-600 text-white text-[10px] font-extrabold uppercase tracking-widest rounded-full shadow-md shadow-blue-900/30">
-              Série em Destaque
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <span className="px-2.5 sm:px-3 py-1 bg-blue-600 text-white text-[10px] font-extrabold uppercase tracking-widest rounded-full shadow-md shadow-blue-900/30">
+              Série Ativa
             </span>
             {seriesInfo.genre && (
-              <span className="px-3 py-1 bg-black/60 backdrop-blur-md text-neutral-300 border border-white/10 text-[10px] font-bold uppercase tracking-wider rounded-full">
+              <span className="px-2.5 sm:px-3 py-1 bg-black/60 backdrop-blur-md text-neutral-300 border border-white/10 text-[10px] font-bold uppercase tracking-wider rounded-full">
                 {seriesInfo.genre}
               </span>
             )}
             {seriesInfo.year && (
-              <span className="px-3 py-1 bg-black/60 backdrop-blur-md text-neutral-300 border border-white/10 text-[10px] font-bold uppercase tracking-wider rounded-full">
+              <span className="px-2.5 sm:px-3 py-1 bg-black/60 backdrop-blur-md text-neutral-300 border border-white/10 text-[10px] font-bold uppercase tracking-wider rounded-full">
                 {seriesInfo.year}
               </span>
             )}
             {seriesInfo.rating && (
-              <span className="px-2.5 py-1 bg-neutral-800/80 backdrop-blur-md text-neutral-200 border border-neutral-700 text-[10px] font-bold rounded-full">
+              <span className="px-2 sm:px-2.5 py-1 bg-neutral-800/80 backdrop-blur-md text-neutral-200 border border-neutral-700 text-[10px] font-bold rounded-full">
                 {seriesInfo.rating}
               </span>
             )}
-            <span className="px-3 py-1 bg-emerald-950/60 backdrop-blur-md text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1">
+            <span className="px-2.5 sm:px-3 py-1 bg-emerald-950/60 backdrop-blur-md text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1">
               <Check className="w-3 h-3" />
               HD 1080p
             </span>
           </div>
 
           {/* Title */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight">
-            {seriesInfo.title || 'Crônicas do Infinito'}
+          <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight">
+            {seriesInfo.title}
           </h1>
 
           {/* Synopsis */}
-          <p className="text-sm sm:text-base text-neutral-300 leading-relaxed font-normal line-clamp-3 sm:line-clamp-4">
-            {seriesInfo.synopsis ||
-              'Acompanhe todos os episódios completos desta série. Assista online sem travamentos pelo player integrado ou baixe os arquivos diretamente para o seu dispositivo.'}
+          <p className="text-xs sm:text-base text-neutral-300 leading-relaxed font-normal line-clamp-3 sm:line-clamp-4">
+            {seriesInfo.synopsis}
           </p>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          {/* Action Buttons - Mobile friendly */}
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 pt-1 sm:pt-2">
             {nextEpisode && (
               <button
                 id="hero-play-btn"
                 onClick={() => onPlayEpisode(nextEpisode)}
-                className="flex items-center gap-2.5 px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-900/30 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 sm:px-6 sm:py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl sm:rounded-2xl shadow-lg shadow-blue-900/30 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
-                <Play className="w-4 h-4 fill-white" />
+                <Play className="w-4 h-4 fill-white shrink-0" />
                 <span>
-                  {watchedCount > 0 ? 'Continuar Assistindo' : 'Começar a Assistir'}
+                  {watchedCount > 0 ? 'Continuar Assistindo' : 'Assistir Agora'}
                 </span>
                 <span className="text-[11px] opacity-80 font-normal">
                   (T{String(nextEpisode.season).padStart(2, '0')}E{String(nextEpisode.episodeNumber).padStart(2, '0')})
@@ -155,53 +165,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <button
               id="hero-episodes-btn"
               onClick={() => onGoToEpisodes('all')}
-              className="flex items-center gap-2 px-5 py-3.5 bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 border border-neutral-700/80 font-semibold text-sm rounded-2xl transition-all cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3.5 bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 border border-neutral-700/80 font-semibold text-xs sm:text-sm rounded-xl sm:rounded-2xl transition-all cursor-pointer"
             >
-              <Tv className="w-4 h-4 text-neutral-400" />
-              <span>Ver Todos os Episódios ({episodes.length})</span>
+              <Tv className="w-4 h-4 text-neutral-400 shrink-0" />
+              <span>Ver Episódios ({episodes.length})</span>
             </button>
 
-            {isAdmin ? (
+            {isAdmin && (
               <button
                 onClick={onOpenEditSeries}
-                className="flex items-center gap-2 px-4 py-3.5 bg-neutral-900/70 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800 rounded-2xl text-xs font-semibold transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-3 bg-neutral-900/70 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800 rounded-xl sm:rounded-2xl text-xs font-semibold transition-colors cursor-pointer"
                 title="Editar informações da série"
               >
-                <Edit3 className="w-4 h-4 text-blue-400" />
+                <Edit3 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                 <span>Editar Série</span>
               </button>
-            ) : null}
+            )}
           </div>
         </div>
       </section>
 
-      {/* Bento Grid: Próximo Episódio + Painel de Acesso / Telemetria */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Next / Featured Episode Card (2 Columns on MD) */}
+      {/* Bento Grid: Próximo Episódio + Status / Conta */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+        {/* Next / Featured Episode Card */}
         {nextEpisode ? (
-          <div className="md:col-span-2 bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col justify-between relative overflow-hidden group">
-            <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-400 text-[10px] font-bold uppercase tracking-wider">
-                    {watchedCount > 0 ? 'Continuar Assistindo' : 'Episódio Recomendado'}
-                  </span>
-                  <span className="text-xs text-neutral-400">
-                    Temporada {nextEpisode.season} • Episódio {nextEpisode.episodeNumber}
+          <div className="md:col-span-2 bg-neutral-900/80 border border-neutral-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex flex-col justify-between group">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+              <div className="space-y-1.5 flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                    {nextEpisode.watched ? 'Episódio em Destaque' : 'Próximo na Fila'}
                   </span>
                 </div>
-                <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors">
-                  {nextEpisode.title}
+
+                <h3 className="text-base sm:text-xl font-bold text-white group-hover:text-blue-300 transition-colors">
+                  T{String(nextEpisode.season).padStart(2, '0')}E{String(nextEpisode.episodeNumber).padStart(2, '0')} • {nextEpisode.title}
                 </h3>
-                <p className="text-xs text-neutral-400 mt-1 line-clamp-2 max-w-xl">
-                  {nextEpisode.description || 'Assista ou baixe este episódio com qualidade máxima.'}
+
+                <p className="text-xs text-neutral-400 line-clamp-2 leading-relaxed">
+                  {nextEpisode.description || 'Assista ou baixe o episódio para reprodução offline.'}
                 </p>
               </div>
 
               {nextEpisode.thumbnailUrl && (
                 <div
                   onClick={() => onPlayEpisode(nextEpisode)}
-                  className="w-full sm:w-44 aspect-video rounded-2xl overflow-hidden border border-neutral-700/80 shrink-0 relative cursor-pointer"
+                  className="w-full sm:w-44 aspect-video rounded-xl sm:rounded-2xl overflow-hidden border border-neutral-700/80 shrink-0 relative cursor-pointer"
                 >
                   <img
                     src={nextEpisode.thumbnailUrl}
@@ -218,7 +228,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               )}
             </div>
 
-            <div className="pt-5 mt-4 border-t border-neutral-800/80 flex flex-wrap items-center justify-between gap-3">
+            <div className="pt-4 mt-4 border-t border-neutral-800/80 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 text-xs text-neutral-400">
                 {nextEpisode.duration && (
                   <span className="flex items-center gap-1">
@@ -237,10 +247,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onPlayEpisode(nextEpisode)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white transition-colors cursor-pointer border border-neutral-700"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white transition-colors cursor-pointer border border-neutral-700"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Assistir Agora</span>
+                  <span>Assistir</span>
                 </button>
                 <button
                   onClick={() => downloadEpisodeFile(nextEpisode)}
@@ -254,9 +264,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
         ) : (
-          <div className="md:col-span-2 bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col justify-center items-center text-center">
-            <Film className="w-10 h-10 text-neutral-600 mb-2" />
-            <h3 className="text-base font-bold text-white">Nenhum episódio cadastrado ainda</h3>
+          <div className="md:col-span-2 bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl p-6 flex flex-col justify-center items-center text-center">
+            <Film className="w-9 h-9 text-neutral-600 mb-2" />
+            <h3 className="text-base font-bold text-white">Nenhum episódio cadastrado nesta série</h3>
             <p className="text-xs text-neutral-400 mt-1 max-w-sm">
               {isAdmin
                 ? 'Você está no modo Administrador. Adicione seu primeiro episódio agora!'
@@ -265,14 +275,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {isAdmin ? (
               <button
                 onClick={onOpenUpload}
-                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl"
+                className="mt-3.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl cursor-pointer"
               >
                 Adicionar Episódio
               </button>
             ) : (
               <button
                 onClick={onRequestAdmin}
-                className="mt-4 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold rounded-xl border border-neutral-700"
+                className="mt-3.5 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold rounded-xl border border-neutral-700 cursor-pointer"
               >
                 Acessar como Administrador
               </button>
@@ -280,13 +290,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         )}
 
-        {/* Platform Access Mode & Stats Box (1 Column) */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col justify-between space-y-4">
+        {/* Platform Access Mode & Stats Box */}
+        <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col justify-between space-y-4">
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2.5">
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
+                  className={`w-2 h-2 rounded-full ${
                     isAdmin ? 'bg-emerald-400 animate-pulse' : 'bg-blue-500'
                   }`}
                 />
@@ -295,29 +305,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </span>
               </div>
               <span
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                   isAdmin
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                     : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                 }`}
               >
-                {isAdmin ? 'Modo Administrador' : 'Modo Visualizador'}
+                {isAdmin ? 'Admin' : 'Visualizador'}
               </span>
             </div>
 
             <h4 className="text-sm font-bold text-white">
-              {isAdmin ? 'Painel de Gerenciamento Ativo' : 'Acesso Livre para Visualização'}
+              {isAdmin ? 'Painel de Gerenciamento' : 'Acesso Livre para Assistir'}
             </h4>
             <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
               {isAdmin
-                ? 'Você possui controle total. Pode fazer upload de episódios (.mp4, .mkv), editar dados da série e excluir arquivos.'
-                : 'Você pode assistir a todos os episódios pelo player online e baixar os arquivos diretamente.'}
+                ? 'Você pode criar novas séries, fazer upload de vídeos e gerenciar todo o portal.'
+                : 'Você pode assistir online e baixar qualquer episódio em qualquer aparelho.'}
             </p>
           </div>
 
           <div className="space-y-2.5 pt-2 border-t border-neutral-800">
             <div className="flex justify-between text-xs">
-              <span className="text-neutral-400">Progresso Assistido</span>
+              <span className="text-neutral-400">Progresso desta Série</span>
               <span className="font-bold text-white">
                 {watchedCount}/{episodes.length} ({progressPercent}%)
               </span>
@@ -332,7 +342,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {isAdmin ? (
               <button
                 onClick={onOpenUpload}
-                className="w-full mt-3 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-blue-900/20 cursor-pointer"
+                className="w-full mt-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-blue-900/20 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Publicar Novo Episódio</span>
@@ -340,7 +350,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : (
               <button
                 onClick={onRequestAdmin}
-                className="w-full mt-3 py-2.5 px-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-xl text-xs font-semibold border border-neutral-700 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                className="w-full mt-2 py-2.5 px-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-xl text-xs font-semibold border border-neutral-700 flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
                 <Shield className="w-3.5 h-3.5 text-blue-400" />
                 <span>Entrar como Administrador</span>
@@ -350,29 +360,104 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </section>
 
-      {/* Seasons Showcase (Abas por Temporada) */}
-      {seasonsList.length > 0 && (
-        <section className="space-y-4">
+      {/* Explore Outras Séries Showcase */}
+      {otherSeries.length > 0 && (
+        <section className="space-y-3.5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Layers className="w-5 h-5 text-blue-500" />
-                <span>Temporadas Disponíveis</span>
+              <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                <Compass className="w-5 h-5 text-blue-500" />
+                <span>Explorar Outras Séries</span>
               </h2>
               <p className="text-xs text-neutral-400">
-                Selecione uma temporada para explorar todos os episódios correspondentes
+                Alterne instantaneamente para assistir outras séries cadastradas no portal
+              </p>
+            </div>
+            <button
+              onClick={onAddNewSeries}
+              className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 px-2.5 py-1 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Nova Série</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {otherSeries.map((s) => {
+              const sEps = allEpisodes.filter((e) => e.seriesId === s.id);
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => onSelectSeries(s)}
+                  className="bg-neutral-900/90 hover:bg-neutral-800/90 border border-neutral-800 hover:border-blue-500/50 rounded-2xl p-4 transition-all cursor-pointer group flex flex-col justify-between"
+                >
+                  <div className="flex items-start gap-3">
+                    {s.bannerUrl ? (
+                      <div className="w-14 h-18 sm:w-16 sm:h-20 rounded-xl overflow-hidden bg-neutral-950 shrink-0 border border-neutral-700/60">
+                        <img
+                          src={s.bannerUrl}
+                          alt={s.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-18 rounded-xl bg-neutral-800 text-neutral-400 flex items-center justify-center shrink-0">
+                        <Tv className="w-6 h-6" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">
+                        {s.genre} • {s.year}
+                      </span>
+                      <h4 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors truncate">
+                        {s.title}
+                      </h4>
+                      <p className="text-xs text-neutral-400 line-clamp-2 mt-1 leading-relaxed">
+                        {s.synopsis}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 mt-3 border-t border-neutral-800 flex items-center justify-between text-xs">
+                    <span className="text-neutral-400 font-medium">
+                      {sEps.length} {sEps.length === 1 ? 'episódio' : 'episódios'}
+                    </span>
+                    <span className="text-blue-400 group-hover:text-blue-300 font-bold flex items-center gap-1">
+                      Ver Série <ArrowRight className="w-3 h-3" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Seasons Showcase (Abas por Temporada) */}
+      {seasonsList.length > 0 && (
+        <section className="space-y-3 sm:space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                <Layers className="w-5 h-5 text-blue-500" />
+                <span>Temporadas de {seriesInfo.title}</span>
+              </h2>
+              <p className="text-xs text-neutral-400">
+                Selecione uma temporada para explorar todos os episódios
               </p>
             </div>
             <button
               onClick={() => onGoToEpisodes('all')}
               className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
             >
-              <span>Ver catálogo completo</span>
+              <span>Ver catálogo ({episodes.length})</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
             {seasonsList.map((seasonNum) => {
               const seasonEpisodes = seasonsMap.get(seasonNum) || [];
               const seasonWatched = seasonEpisodes.filter((e) => e.watched).length;
@@ -380,7 +465,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <div
                   key={seasonNum}
                   onClick={() => onGoToEpisodes(seasonNum)}
-                  className="bg-neutral-900 hover:bg-neutral-800/80 border border-neutral-800 hover:border-blue-500/40 rounded-3xl p-5 transition-all cursor-pointer group flex flex-col justify-between"
+                  className="bg-neutral-900 hover:bg-neutral-800/80 border border-neutral-800 hover:border-blue-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 transition-all cursor-pointer group flex flex-col justify-between"
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -396,11 +481,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-4 mt-3 border-t border-neutral-800/80 flex items-center justify-between text-xs text-neutral-400">
+                  <div className="pt-3 sm:pt-4 mt-3 border-t border-neutral-800/80 flex items-center justify-between text-xs text-neutral-400">
                     <span>
                       {seasonWatched}/{seasonEpisodes.length} assistidos
                     </span>
-                    <span className="text-neutral-500 font-medium">Acessar temporada →</span>
+                    <span className="text-neutral-500 font-medium">Acessar →</span>
                   </div>
                 </div>
               );
@@ -411,12 +496,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Recentes / Últimos Episódios Adicionados */}
       {recentEpisodes.length > 0 && (
-        <section className="space-y-4">
+        <section className="space-y-3.5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-blue-500" />
-                <span>Últimos Episódios Disponíveis</span>
+                <span>Episódios em Destaque</span>
               </h2>
               <p className="text-xs text-neutral-400">
                 Assista online com carregamento veloz ou faça o download imediato
@@ -431,7 +516,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {recentEpisodes.map((ep) => (
               <EpisodeCard
                 key={ep.id}
@@ -447,39 +532,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </section>
       )}
-
-      {/* Technical Specifications / FAQ Bento Strip */}
-      <section className="bg-neutral-900/60 border border-neutral-800 rounded-3xl p-6 sm:p-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="space-y-2">
-          <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
-            <Film className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-white">Player Integrado Cinema</h4>
-          <p className="text-xs text-neutral-400 leading-relaxed">
-            Interface moderna com atalhos de teclado (Espaço, setas de navegação, F para tela cheia e M para mudo), além de botão de próximo episódio automático.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
-            <Download className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-white">Downloads Sem Limite</h4>
-          <p className="text-xs text-neutral-400 leading-relaxed">
-            Qualquer visitante pode baixar os episódios originais direto para o computador ou celular com um único clique no botão de download.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
-            <Shield className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-white">Console Admin Seguro</h4>
-          <p className="text-xs text-neutral-400 leading-relaxed">
-            Protegido por senha (PIN 0409) para assegurar que apenas administradores façam upload, editem a sinopse e façam exclusões.
-          </p>
-        </div>
-      </section>
     </div>
   );
 };

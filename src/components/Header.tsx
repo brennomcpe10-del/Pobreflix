@@ -1,65 +1,127 @@
 import React from 'react';
-import { Plus, Edit3, Tv, Film, Lock, Shield } from 'lucide-react';
-import { SeriesInfo, Episode } from '../types';
+import { Plus, Edit3, Tv, Film, Lock, ShieldCheck, ShieldAlert, Sparkles } from 'lucide-react';
+import { Series, Episode } from '../types';
 
 interface HeaderProps {
-  seriesInfo: SeriesInfo;
+  seriesInfo: Series;
+  allSeries: Series[];
   episodes: Episode[];
   isAdmin?: boolean;
   onRequestAdmin?: () => void;
+  onLogoutAdmin?: () => void;
   onOpenUpload: () => void;
   onOpenEditSeries: () => void;
-  onPlayEpisode?: (ep: Episode) => void;
+  onOpenSeriesList: () => void;
+  onOpenNewSeries?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   seriesInfo,
+  allSeries,
   isAdmin = false,
   onRequestAdmin,
+  onLogoutAdmin,
   onOpenUpload,
   onOpenEditSeries,
+  onOpenSeriesList,
+  onOpenNewSeries,
 }) => {
-  const seriesInitial = (seriesInfo.title || 'S').trim().charAt(0).toUpperCase();
-
   return (
-    <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-neutral-900/50 border border-neutral-800 p-4 sm:px-6 rounded-3xl gap-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center font-bold text-white shadow-md shadow-blue-600/30">
-          {seriesInitial}
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
-              <span>{seriesInfo.title || 'Portal de Séries'}</span>
-              <span className="text-neutral-500 font-normal text-xs sm:text-sm">
-                / {seriesInfo.genre || 'Série'}
-              </span>
-            </h1>
-            <span
-              className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                isAdmin
-                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-neutral-800 text-neutral-400 border border-neutral-700'
-              }`}
-            >
-              {isAdmin ? 'Admin' : 'Visualizador'}
-            </span>
+    <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-neutral-900/60 border border-neutral-800/80 p-3.5 sm:px-6 sm:py-4 rounded-2xl sm:rounded-3xl gap-3 sm:gap-4 shadow-sm backdrop-blur-md">
+      {/* Brand & Series Info */}
+      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+        <div className="flex items-center gap-2.5">
+          <div 
+            onClick={onOpenSeriesList}
+            className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl sm:rounded-2xl flex items-center justify-center font-black text-white shadow-md shadow-blue-600/30 cursor-pointer hover:scale-105 transition-transform"
+            title="Ver catálogo de séries"
+          >
+            <Film className="w-5 h-5" />
           </div>
-          <p className="text-[11px] text-neutral-400 font-medium flex items-center gap-2">
-            {seriesInfo.year && <span>{seriesInfo.year}</span>}
-            {seriesInfo.rating && (
-              <>
-                <span>•</span>
-                <span className="text-neutral-300 font-bold">{seriesInfo.rating}</span>
-              </>
-            )}
-            <span>•</span>
-            <span className="text-neutral-500">Player Cinema & Downloads Rápidos</span>
-          </p>
+
+          <div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={onOpenSeriesList}
+                className="text-sm sm:text-lg font-bold tracking-tight text-white hover:text-blue-300 transition-colors flex items-center gap-1 text-left cursor-pointer"
+              >
+                <span className="truncate max-w-[160px] sm:max-w-[280px]">{seriesInfo.title}</span>
+                <span className="text-[10px] text-blue-400 font-semibold bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.5 rounded ml-1">
+                  {allSeries.length} {allSeries.length === 1 ? 'série' : 'séries'}
+                </span>
+              </button>
+            </div>
+
+            <p className="text-[10px] sm:text-xs text-neutral-400 font-medium flex items-center gap-1.5">
+              <span>{seriesInfo.genre || 'Geral'}</span>
+              <span>•</span>
+              <span>{seriesInfo.year || '2025'}</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline text-neutral-500">Player HD & Downloads</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Status Badge on Mobile */}
+        <div className="sm:hidden">
+          {isAdmin ? (
+            <button
+              onClick={onLogoutAdmin}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-pointer"
+            >
+              <ShieldCheck className="w-3 h-3" />
+              <span>Admin</span>
+            </button>
+          ) : (
+            <button
+              onClick={onRequestAdmin}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-neutral-800 text-neutral-300 border border-neutral-700 cursor-pointer"
+            >
+              <Lock className="w-3 h-3 text-blue-400" />
+              <span>Entrar</span>
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 self-end sm:self-auto">
+      {/* Desktop Actions & Admin Pill */}
+      <div className="hidden sm:flex items-center gap-2.5">
+        {isAdmin ? (
+          <div className="flex items-center gap-2 mr-1">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Modo Admin Ativo</span>
+            </span>
+            <button
+              onClick={onLogoutAdmin}
+              className="text-[11px] text-neutral-400 hover:text-rose-400 underline cursor-pointer"
+              title="Sair do modo administrador"
+            >
+              Sair
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onRequestAdmin}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-300 hover:text-white bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700/80 transition-all cursor-pointer"
+          >
+            <Lock className="w-3.5 h-3.5 text-blue-400" />
+            <span>Admin (Senha: 0409)</span>
+          </button>
+        )}
+
+        {onOpenNewSeries && (
+          <button
+            id="header-btn-new-series"
+            onClick={onOpenNewSeries}
+            className="flex items-center gap-1.5 px-3 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 rounded-xl text-xs font-semibold text-neutral-200 border border-neutral-700/70 transition-all cursor-pointer"
+            title="Cadastrar nova série no catálogo"
+          >
+            <Film className="w-3.5 h-3.5 text-blue-400" />
+            <span>+ Nova Série</span>
+          </button>
+        )}
+
         <button
           id="btn-edit-series"
           onClick={() => {
@@ -69,12 +131,11 @@ export const Header: React.FC<HeaderProps> = ({
               onRequestAdmin?.();
             }
           }}
-          className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 rounded-xl text-xs sm:text-sm font-medium text-neutral-200 border border-neutral-700/70 transition-all cursor-pointer"
-          title={isAdmin ? 'Configurar metadados da série' : 'Requer senha de administrador (0409)'}
+          className="flex items-center gap-1.5 px-3 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 rounded-xl text-xs font-semibold text-neutral-200 border border-neutral-700/70 transition-all cursor-pointer"
+          title={isAdmin ? 'Configurar série' : 'Requer senha de administrador (0409)'}
         >
           <Edit3 className="w-3.5 h-3.5 text-neutral-400" />
           <span>Configurar Série</span>
-          {!isAdmin && <Lock className="w-3 h-3 text-neutral-400" />}
         </button>
 
         <button
@@ -86,16 +147,13 @@ export const Header: React.FC<HeaderProps> = ({
               onRequestAdmin?.();
             }
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs sm:text-sm font-semibold text-white shadow-lg shadow-blue-900/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold text-white shadow-md shadow-blue-900/20 transition-all cursor-pointer hover:scale-102"
           title={isAdmin ? 'Adicionar novo episódio' : 'Requer senha de administrador (0409)'}
         >
           <Plus className="w-4 h-4" />
-          <span>Adicionar Episódio</span>
-          {!isAdmin && <Lock className="w-3.5 h-3.5 text-blue-200" />}
+          <span>Novo Episódio</span>
         </button>
       </div>
     </header>
   );
 };
-
-

@@ -8,15 +8,16 @@ import {
   Link as LinkIcon,
   AlertCircle,
   Loader2,
-  Sparkles,
+  Tv,
 } from 'lucide-react';
-import { Episode } from '../types';
+import { Episode, Series } from '../types';
 import {
   formatBytes,
   formatDuration,
   cleanFileNameToTitle,
   generateVideoThumbnail,
 } from '../utils/helpers';
+import { uploadMediaFile } from '../utils/api';
 
 interface EpisodeUploadModalProps {
   isOpen: boolean;
@@ -24,6 +25,8 @@ interface EpisodeUploadModalProps {
   onSaveEpisode: (episode: Episode) => Promise<void>;
   existingEpisodes: Episode[];
   episodeToEdit?: Episode | null;
+  seriesList: Series[];
+  activeSeriesId?: string;
 }
 
 export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
@@ -32,12 +35,15 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
   onSaveEpisode,
   existingEpisodes,
   episodeToEdit,
+  seriesList,
+  activeSeriesId,
 }) => {
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [videoUrlInput, setVideoUrlInput] = useState('');
 
   // Form Fields
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [season, setSeason] = useState(1);
   const [episodeNumber, setEpisodeNumber] = useState(1);
@@ -49,6 +55,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
 
   // UI States
   const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -60,6 +67,11 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
+    setUploadProgress(null);
+
+    const defaultSeries = activeSeriesId || seriesList[0]?.id || '';
+    setSelectedSeriesId(episodeToEdit?.seriesId || defaultSeries);
+
     if (episodeToEdit) {
       setTitle(episodeToEdit.title);
       setSeason(episodeToEdit.season);
@@ -70,17 +82,16 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
       setFileSize(episodeToEdit.fileSize || 0);
       setFileName(episodeToEdit.fileName || '');
       setVideoUrlInput(episodeToEdit.videoUrl || '');
-      setUploadMode(episodeToEdit.videoBlob ? 'file' : 'url');
+      setUploadMode(episodeToEdit.videoUrl?.startsWith('/uploads/') ? 'file' : 'url');
       setSelectedFile(null);
     } else {
-      // Find latest season and suggest next episode number
-      const maxSeason = existingEpisodes.length > 0 
-        ? Math.max(...existingEpisodes.map((e) => e.season)) 
-        : 1;
-      const epsInSeason = existingEpisodes.filter((e) => e.season === maxSeason);
-      const nextEpNum = epsInSeason.length > 0 
-        ? Math.max(...epsInSeason.map((e) => e.episodeNumber)) + 1 
-        : 1;
+      // Find latest season and suggest next episode number for the selected series
+      const seriesEps = existingEpisodes.filter(
+        (e) => e.seriesId === (activeSeriesId || seriesList[0]?.id)
+      );
+      const maxSeason = seriesEps.length > 0 ? Math.max(...seriesEps.map((e) => e.season)) : 1;
+      const epsInSeason = seriesEps.filter((e) => e.season === maxSeason);
+      const nextEpNum = epsInSeason.length > 0 ? Math.max(...epsInSeason.map((e) => e.episodeNumber)) + 1 : 1;
 
       setSeason(maxSeason);
       setEpisodeNumber(nextEpNum);
@@ -95,7 +106,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
       setUploadMode('file');
       setErrorMsg('');
     }
-  }, [isOpen, episodeToEdit, existingEpisodes]);
+  }, [isOpen, episodeToEdit, existingEpisodes, seriesList, activeSeriesId]);
 
   if (!isOpen) return null;
 
@@ -110,12 +121,11 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
     setFileName(file.name);
     setFileSize(file.size);
 
-    // If user hasn't typed a title yet, suggest one derived from filename
     if (!title || title.trim() === '') {
       setTitle(cleanFileNameToTitle(file.name));
     }
 
-    // Process thumbnail and duration from the video file
+    // Process thumbnail and duration from the video file locally
     setIsProcessingFile(true);
     try {
       const result = await generateVideoThumbnail(file);
@@ -154,7 +164,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
       return;
     }
 
-    if (uploadMode === 'file' && !selectedFile && !episodeToEdit?.videoBlob && !episodeToEdit?.videoUrl) {
+    if (uploadMode === 'file' && !selectedFile && !episodeToEdit?.videoUrl && !episodeToEdit?.videoBlob) {
       setErrorMsg('Por favor, selecione um arquivo de vídeo para o episódio.');
       return;
     }
@@ -168,16 +178,35 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
     setErrorMsg('');
 
     try {
-      const epId = episodeToEdit?.id || `ep-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      let finalVideoUrl = episodeToEdit?.videoUrl || '';
+
+      // If user selected a local file, upload it to the server so ALL devices (phones, tablets, PCs) can watch it!
+      if (uploadMode === 'file' && selectedFile) {
+        try {
+          const uploadRes = await uploadMediaFile(selectedFile, (percent) => {
+            setUploadProgress(percent);
+          });
+          finalVideoUrl = uploadRes.url;
+        } catch (uploadErr) {
+          console.warn('Upload para o servidor falhou, fallback para blob local:', uploadErr);
+        }
+      } else if (uploadMode === 'url') {
+        finalVideoUrl = videoUrlInput.trim();
+      }
+
+      const epId = episodeToEdit?.id || `ep-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
       const newEpisode: Episode = {
         id: epId,
+        seriesId: selectedSeriesId || activeSeriesId || seriesList[0]?.id || 'series-default',
         title: title.trim(),
         season: Number(season) || 1,
         episodeNumber: Number(episodeNumber) || 1,
         description: description.trim(),
         duration: duration || (episodeToEdit?.duration || 0),
         thumbnailUrl: thumbnailUrl || episodeToEdit?.thumbnailUrl || '',
+        videoUrl: finalVideoUrl,
+        videoBlob: selectedFile || episodeToEdit?.videoBlob,
         fileName: fileName || (selectedFile?.name || episodeToEdit?.fileName || `episodio_${season}x${episodeNumber}.mp4`),
         fileSize: fileSize || selectedFile?.size || episodeToEdit?.fileSize || 0,
         fileType: selectedFile?.type || episodeToEdit?.fileType || 'video/mp4',
@@ -185,23 +214,14 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
         watched: episodeToEdit?.watched || false,
       };
 
-      if (uploadMode === 'file') {
-        if (selectedFile) {
-          newEpisode.videoBlob = selectedFile;
-        } else if (episodeToEdit?.videoBlob) {
-          newEpisode.videoBlob = episodeToEdit.videoBlob;
-        }
-      } else {
-        newEpisode.videoUrl = videoUrlInput.trim();
-      }
-
       await onSaveEpisode(newEpisode);
       onClose();
     } catch (err: any) {
       console.error('Falha ao salvar episódio:', err);
-      setErrorMsg('Erro ao gravar episódio no armazenamento. Verifique se o navegador possui espaço disponível.');
+      setErrorMsg('Erro ao salvar episódio. Verifique se o servidor está ativo.');
     } finally {
       setIsSaving(false);
+      setUploadProgress(null);
     }
   };
 
@@ -212,7 +232,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
         className="relative w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden my-auto text-neutral-100"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-950/60">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-neutral-800 bg-neutral-950/60">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
               <FileVideo className="w-5 h-5" />
@@ -220,9 +240,11 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Console de Upload</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                  Sincronização em Nuvem
+                </span>
               </div>
-              <h2 className="text-lg font-bold text-white">
+              <h2 className="text-base sm:text-lg font-bold text-white">
                 {episodeToEdit ? 'Editar Episódio' : 'Publicar Novo Episódio'}
               </h2>
             </div>
@@ -237,11 +259,32 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
         </div>
 
         {/* Content Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 sm:space-y-5">
           {errorMsg && (
             <div className="flex items-center gap-3 p-3.5 rounded-xl bg-rose-950/50 border border-rose-800/80 text-rose-200 text-sm">
               <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
               <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Series Selection */}
+          {seriesList.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Tv className="w-3.5 h-3.5 text-blue-400" />
+                <span>Série de Destino *</span>
+              </label>
+              <select
+                value={selectedSeriesId}
+                onChange={(e) => setSelectedSeriesId(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-white text-sm font-semibold transition-colors cursor-pointer"
+              >
+                {seriesList.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title} ({s.year})
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
@@ -257,7 +300,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
               }`}
             >
               <UploadCloud className="w-4 h-4 text-blue-400" />
-              Arquivo do Computador
+              Arquivo do Dispositivo
             </button>
             <button
               type="button"
@@ -269,7 +312,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
               }`}
             >
               <LinkIcon className="w-4 h-4 text-blue-400" />
-              Link Direto / URL Web
+              Link Direto Web
             </button>
           </div>
 
@@ -302,7 +345,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
                   }
                 }}
                 onClick={() => fileInputRef.current?.click()}
-                className={`relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${
+                className={`relative border-2 border-dashed rounded-2xl p-5 sm:p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${
                   isDragging
                     ? 'border-blue-500 bg-blue-500/10'
                     : selectedFile || episodeToEdit?.fileName
@@ -334,7 +377,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
                             <span>Duração: <strong className="text-neutral-200">{formatDuration(duration)}</strong></span>
                           </>
                         )}
-                        <span className="text-emerald-400 font-medium ml-auto">Clique para trocar arquivo</span>
+                        <span className="text-emerald-400 font-medium ml-auto">Clique para trocar</span>
                       </div>
                     </div>
                   </div>
@@ -344,10 +387,10 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
                       <UploadCloud className="w-6 h-6" />
                     </div>
                     <div className="text-sm">
-                      <span className="font-semibold text-blue-400">Clique para escolher o vídeo</span> ou arraste o arquivo até aqui
+                      <span className="font-semibold text-blue-400">Escolha o arquivo de vídeo</span> ou arraste até aqui
                     </div>
                     <p className="text-xs text-neutral-400">
-                      Arraste .mp4 ou .mkv aqui • Formatos suportados: MP4, WebM, MKV, AVI, MOV
+                      Formatos: MP4, WebM, MKV, AVI • Arquivo sincronizado automaticamente para todos os aparelhos
                     </p>
                   </div>
                 )}
@@ -355,7 +398,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+              <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
                 URL Direta do Arquivo de Vídeo
               </label>
               <input
@@ -372,15 +415,12 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
                 placeholder="https://exemplo.com/videos/episodio_01.mp4"
                 className="w-full px-4 py-3 rounded-xl bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-white text-sm placeholder-neutral-500 transition-colors"
               />
-              <p className="text-[11px] text-neutral-500">
-                Pode ser um link MP4, WebM ou link direto acessível de download/reprodução.
-              </p>
             </div>
           )}
 
           {/* Episode Title */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest flex items-center justify-between">
+            <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest flex items-center justify-between">
               <span>Título do Episódio *</span>
               <span className="text-[10px] text-neutral-500 lowercase">obrigatório</span>
             </label>
@@ -395,9 +435,9 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
           </div>
 
           {/* Season & Episode Number */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+              <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
                 Temporada
               </label>
               <div className="relative">
@@ -417,7 +457,7 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+              <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
                 Número do Episódio
               </label>
               <div className="relative">
@@ -439,22 +479,22 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
 
           {/* Synopsis / Description */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest flex items-center justify-between">
+            <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest flex items-center justify-between">
               <span>Sinopse / Descrição</span>
               <span className="text-[10px] text-neutral-500">opcional</span>
             </label>
             <textarea
-              rows={3}
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Breve resumo sobre o que acontece neste episódio..."
-              className="w-full px-4 py-3 rounded-xl bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-white text-sm placeholder-neutral-500 transition-colors resize-none"
+              className="w-full px-4 py-2.5 rounded-xl bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-white text-sm placeholder-neutral-500 transition-colors resize-none"
             />
           </div>
 
           {/* Thumbnail / Cover */}
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest flex items-center justify-between">
+            <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest flex items-center justify-between">
               <span>Capa / Miniatura</span>
               {thumbnailUrl && (
                 <button
@@ -467,28 +507,23 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
               )}
             </label>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {thumbnailUrl ? (
-                <div className="relative w-36 h-20 rounded-xl overflow-hidden border border-neutral-700 shrink-0 group">
+                <div className="relative w-28 h-16 sm:w-36 sm:h-20 rounded-xl overflow-hidden border border-neutral-700 shrink-0">
                   <img
                     src={thumbnailUrl}
-                    alt="Miniatura do episódio"
+                    alt="Miniatura"
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="text-[10px] font-bold text-white uppercase bg-black/60 px-2 py-1 rounded">
-                      Alterar
-                    </span>
-                  </div>
                 </div>
               ) : (
-                <div className="w-36 h-20 rounded-xl border border-dashed border-neutral-700 bg-neutral-950/60 flex flex-col items-center justify-center text-neutral-500 shrink-0">
-                  <ImageIcon className="w-6 h-6 mb-1 text-neutral-600" />
+                <div className="w-28 h-16 sm:w-36 sm:h-20 rounded-xl border border-dashed border-neutral-700 bg-neutral-950/60 flex flex-col items-center justify-center text-neutral-500 shrink-0">
+                  <ImageIcon className="w-5 h-5 mb-1 text-neutral-600" />
                   <span className="text-[10px]">Sem capa</span>
                 </div>
               )}
 
-              <div className="flex-1 space-y-2">
+              <div className="flex-1 space-y-1.5">
                 <input
                   ref={customThumbInputRef}
                   type="file"
@@ -503,25 +538,38 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
                 <button
                   type="button"
                   onClick={() => customThumbInputRef.current?.click()}
-                  className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-neutral-200 border border-neutral-700 flex items-center gap-2 cursor-pointer transition-colors"
+                  className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-neutral-200 border border-neutral-700 flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
-                  Enviar imagem personalizada
+                  Personalizar Imagem
                 </button>
-                <p className="text-[11px] text-neutral-400">
-                  Ao carregar um vídeo, a miniatura é extraída automaticamente, mas você pode enviar uma imagem customizada se preferir.
-                </p>
               </div>
             </div>
           </div>
 
+          {/* Upload Progress Bar if uploading file to server */}
+          {uploadProgress !== null && (
+            <div className="space-y-1.5 p-3 rounded-xl bg-blue-950/40 border border-blue-800/60">
+              <div className="flex items-center justify-between text-xs text-blue-300">
+                <span>Enviando vídeo para o servidor compartilhado...</span>
+                <span className="font-bold">{uploadProgress}%</span>
+              </div>
+              <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500 transition-all duration-150 rounded-full" 
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Submit Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-800">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold text-neutral-300 transition-colors cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold text-neutral-300 transition-colors cursor-pointer"
             >
               Cancelar
             </button>
@@ -529,12 +577,12 @@ export const EpisodeUploadModal: React.FC<EpisodeUploadModalProps> = ({
               id="btn-save-episode"
               type="submit"
               disabled={isSaving || isProcessingFile}
-              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-bold text-white transition-all duration-150 shadow-lg shadow-blue-900/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-bold text-white transition-all duration-150 shadow-lg shadow-blue-900/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Salvando no navegador...</span>
+                  <span>Publicando no Servidor...</span>
                 </>
               ) : (
                 <>
